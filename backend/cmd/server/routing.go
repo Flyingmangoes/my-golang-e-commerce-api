@@ -14,8 +14,8 @@ func registerRoutes(r *gin.Engine, s *ServerContext) {
 	// v1 auth
 	auth := r.Group("/v1/auth" ) 
 	{
-		auth.GET("/user", userCtrl.GetUser())
-		auth.POST("/user", userCtrl.CreatingUser())
-		auth.PUT("/user", userCtrl.UpdatingUser())
+		auth.GET("/user", userCtrl.Login())
+		auth.POST("/user", userCtrl.Register())
+		auth.PUT("/user", userCtrl.Update())
 	}
 }

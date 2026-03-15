@@ -37,6 +37,10 @@ func ErrUnauthorized(msg string) *AppError {
     return &AppError{Code: http.StatusUnauthorized, Message: msg}
 }
 
+func ErrNotFound(msg string) *AppError {
+    return &AppError{Code: http.StatusNotFound, Message: msg}
+}
+
 func JSONAppErrorReporter() gin.HandlerFunc {
     return jsonAppErrorReporterT(gin.ErrorTypeAny)
 }

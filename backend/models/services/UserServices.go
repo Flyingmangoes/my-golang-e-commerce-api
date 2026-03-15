@@ -20,6 +20,7 @@ type UserStoreInterface interface {
 	DeleteUser(ctx context.Context, id int, email string) (error)
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*models.User, error)
+	GetPassword(ctx context.Context, id int) (*models.User, error)
 	ValidateUser(ctx context.Context, id int) (*models.User, error)
 }
 
@@ -140,6 +141,16 @@ func (us *UserStore) GetUserByUsername(ctx context.Context, username string) (*m
 		return nil, err
 	}
 
+	return user, nil
+}
+
+func (us *UserStore)GetPassword(ctx context.Context, id int) (*models.User, error) {
+	user := &models.User{}
+	err := us.db.QueryRowContext(ctx, `SELECT passwordhashed WHERE user_id = $1`, id).Scan(&user.PasswordHash)
+	if err != nil {
+		return nil, err
+	}
+	
 	return user, nil
 }
 
