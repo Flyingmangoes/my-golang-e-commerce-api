@@ -11,27 +11,32 @@ import (
 	"golang.org/x/time/rate"
 )
 
-type Server struct {
-	users 		services.UserStoreInterface
-	products 	services.ProductStoreInterface 
-	orders 		services.OrderStoreInterface
+// Always Store the required Interface in the server context
+// to make it more readable and added the new variable 
+// in SetupServer
+
+type ServerContext struct {
+	Users 		services.UserStoreInterface
+	Products 	services.ProductStoreInterface 
+	Orders 		services.OrderStoreInterface
 }
 
-func SetupServer(us services.UserStoreInterface, prds services.ProductStoreInterface, ords services.OrderStoreInterface) *Server {
-	return &Server{
-		users:us,
-		products: prds,
-		orders: ords,
+func SetupServer(us services.UserStoreInterface, prds services.ProductStoreInterface, ords services.OrderStoreInterface) *ServerContext {
+	return &ServerContext{
+		Users:us,
+		Products: prds,
+		Orders: ords,
 	}
 }
 
 
-func (s *Server) StartLoop(cfg *config.Application) {
+func (s *ServerContext)StartLoop(cfg *config.Application) {
 		router := gin.Default()
 		iRate := middlewares.NewIPRateLimit(rate.Limit(cfg.RateConf.RequestPerMinute), cfg.RateConf.Burst)
 
 		router.Use(middlewares.CORSMiddleware())
 		router.Use(iRate.RateLimiting())
+		router.Use(middlewares.JSONAppErrorReporter())
 
 		registerRoutes(router, s)
 

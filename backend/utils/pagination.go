@@ -6,4 +6,6 @@ type Pagination struct {
 	Offset 	int
 }
 
-func GetPagination()
+func GetPagination() {
+	
+}

@@ -5,5 +5,5 @@ import (
 )
 
 func ValidatingUser(c *gin.Context) (bool, error) {
-		
+		return false, nil
 }
