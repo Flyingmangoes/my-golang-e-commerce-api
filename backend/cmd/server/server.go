@@ -1,9 +1,9 @@
 package server
 
 import (
-	"backend/config"
-	"backend/middlewares"
-	"backend/models/services"
+	"backend/src/config"
+	"backend/src/middlewares"
+	"backend/src/services"
 	"log/slog"
 	"net"
 

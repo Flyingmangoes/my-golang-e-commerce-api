@@ -2,9 +2,9 @@ package main
 
 import (
 	"backend/cmd/server"
-	"backend/config"
-	"backend/database"
-	"backend/models/services"
+	"backend/src/config"
+	"backend/src/database"
+	"backend/src/services"
 	"log/slog"
 	"os"
 
