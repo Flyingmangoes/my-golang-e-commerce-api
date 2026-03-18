@@ -1,7 +1,7 @@
 package services
 
 import (
-	"backend/models"
+	"backend/src/models"
 	"database/sql"
 	"context"
 )

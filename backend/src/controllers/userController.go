@@ -1,9 +1,10 @@
 package controllers
 
 import (
-	"backend/middlewares"
-	"backend/models/services"
-	"backend/utils"
+	"backend/src/middlewares"
+	"backend/src/services"
+	"backend/src/utils"
+	"backend/src/validators"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -33,6 +34,7 @@ type CreateUserRequest struct {
 
 type UpdateUserRequest struct {
     UserID      	int     `json:"user_id"      binding:"required"`
+	Password 		string 	`json:"password"`
     NewFirstname 	*string `json:"newfirstname" binding:"omitempty"`
     NewLastname  	*string `json:"newlastname"  binding:"omitempty"`
     NewPassword  	*string `json:"newpassword"  binding:"omitempty,min=8"`
@@ -100,7 +102,7 @@ func (us *UserContext)Update() gin.HandlerFunc {
 			return
 		}
 
-		userID := c.GetInt("user_id")
+		//userID := c.GetInt("user_id")
 		var newPassword *string = nil
 		if req.NewPassword != nil {
 			var pw string = *req.NewPassword
@@ -115,7 +117,7 @@ func (us *UserContext)Update() gin.HandlerFunc {
 		}
 
 		user, err := us.Users.UpdateUser(c.Request.Context(), 
-			userID, req.NewFirstname, req.NewLastname,
+			req.UserID, req.NewFirstname, req.NewLastname,
 			newPassword, req.NewEmail, 
 			req.NewUsername, req.NewLocation,
 		)
@@ -124,6 +126,18 @@ func (us *UserContext)Update() gin.HandlerFunc {
 			slog.Error("[DEBUG]", "error", err)
 			c.Error(middlewares.ErrInternal("Failed to update user"))
 			return
+		}
+
+		compares, err := us.Users.GetPassword(c.Request.Context(), req.UserID)
+		if err != nil {
+			slog.Error("[DEBUG]", "error", err)
+			c.Error(middlewares.ErrInternal("Failed to compare data"))
+			return
+		}
+
+		if err := validators.ValidatePassword(compares.PasswordHash, req.Password); err != nil {
+			c.Error(middlewares.ErrUnauthorized("Invalid credentials"))
+            return
 		}
 
 		c.JSON(http.StatusOK, gin.H{"user updated": user}) 
@@ -179,37 +193,22 @@ func (us *UserContext)Login() gin.HandlerFunc{
 			return
 		}
 
-		userID := c.GetInt("user_int")
-		hashedpass, err := us.Users.GetPassword(c.Request.Context(), userID)
-		if err != nil {
-			slog.Error("[DEBUG]", "error", err)
-			var PgErr *pq.Error
-			if errors.As(err, &PgErr) && PgErr.Code == "20000"{
-				slog.Error("[DEBUG]", "error", err)
-				c.Error(middlewares.ErrNotFound("Invalid credentials"))
-				return
-			}
+		if req.Email == nil && req.Username == nil {
+            c.Error(middlewares.ErrBadRequest("Email or username is required"))
+            return
+        }
 
-			c.Error(middlewares.ErrInternal("Failed to check password"))
-			return
-		}
+		user, err := us.Users.GetUserByEmail(c.Request.Context(), *req.Email)
+        if err != nil {
+            c.Error(middlewares.ErrUnauthorized("Invalid credentials"))
+            return
+        }
 
-		if err := bcrypt.CompareHashAndPassword([]byte(hashedpass.PasswordHash), []byte(req.Password)); err != nil {
-			slog.Error("[DEBUG]", "error", err)
-			c.Error(middlewares.ErrUnauthorized("Invalid credentials"))
-			return
-		}
-
-		if req.Email != nil {
-			email := *req.Email
-			user, err := us.Users.GetUserByEmail(c.Request.Context(), email)
-			if err != nil {
-				slog.Error("[DEBUG]", "error", err)
-				c.Error(middlewares.ErrInternal("Failed to get user"))
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{"user": user}) 
-		}
+		if err := validators.ValidatePassword(user.PasswordHash, req.Password); err != nil {
+            c.Error(middlewares.ErrUnauthorized("Invalid credentials"))
+            return
+        }
+		
+		c.JSON(http.StatusOK, gin.H{"user": user})
 	}
 }

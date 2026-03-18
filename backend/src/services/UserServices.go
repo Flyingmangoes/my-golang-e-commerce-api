@@ -1,8 +1,8 @@
 package services
 
 import (
-	"backend/models"
-	"backend/utils"
+	"backend/src/models"
+	"backend/src/utils"
 	"context"
 	"database/sql"
 	"fmt"
@@ -21,7 +21,6 @@ type UserStoreInterface interface {
 	GetUserByEmail(ctx context.Context, email string) (*models.User, error)
 	GetUserByUsername(ctx context.Context, username string) (*models.User, error)
 	GetPassword(ctx context.Context, id int) (*models.User, error)
-	ValidateUser(ctx context.Context, id int) (*models.User, error)
 }
 
 type UserStore struct {
@@ -41,12 +40,16 @@ func (us *UserStore)CreateUser(ctx context.Context, firstName, lastName, usernam
 
 	defer tx.Rollback()
 
-	var id string 
+	var id int
 
 	for {
 		id = utils.GenerateId()
 		var exists bool
-		tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM mkt_users WHERE user_id = $1)`, id).Scan(&exists)
+		err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM mkt_users WHERE user_id = $1)`, id).Scan(&exists)
+		if err != nil {
+            return nil, fmt.Errorf("failed to check id uniqueness: %w", err)
+        }
+		
 		if !exists {
 			break
 		}
@@ -55,9 +58,9 @@ func (us *UserStore)CreateUser(ctx context.Context, firstName, lastName, usernam
 	err = tx.QueryRowContext(ctx, 
 		`INSERT INTO mkt_users (user_id, firstname, lastname, username, email, passwordhashed, user_type, user_location, is_agree)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-		RETURNING user_id, firstname, lastname, username, email, user_type, user_location`,
+		RETURNING user_id, firstname, lastname, username, email, user_type, user_location, is_agree, created_at`,
 		id, firstName, lastName, username, email, passwordhashed, usertype, userlocation, isagree,
-	).Scan(&user.UserID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.UserType)
+	).Scan(&user.UserID, &user.FirstName, &user.LastName, &user.Username, &user.Email, &user.UserType, &user.UserLocation, &user.IsAgree, &user.CreatedAt)
 	
 	if err != nil {
 		return nil, err
@@ -72,17 +75,18 @@ func (us *UserStore)CreateUser(ctx context.Context, firstName, lastName, usernam
 
 	func (us *UserStore)UpdateUser(ctx context.Context, id int, newFirstName, newLastName, newPasswordHashed, newEmail, newUsername, newLocation *string) (*models.User, error) {
 		updatedUser := &models.User{}
-	err := us.db.QueryRowContext(ctx, 
+		err := us.db.QueryRowContext(ctx, 
 		`UPDATE mkt_users SET 
 			firstname		= COALESCE ($1, firstname),
 			lastname		= COALESCE ($2, lastname),
 			passwordhashed 	= COALESCE ($3, passwordhashed),
 			email			= COALESCE ($4, email),
 			username		= COALESCE ($5, username),
-			user_location  	= COALESCE ($6, user_location)
-		WHERE user_id = $5
+			user_location  	= COALESCE ($6, user_location),
+			updated_at		= NOW()
+		WHERE user_id = $7
 		RETURNING user_id, firstname, lastname, email`,
-		newFirstName, newLastName, newPasswordHashed, newEmail, newUsername,newLocation, id,
+		newFirstName, newLastName, newPasswordHashed, newEmail, newUsername, newLocation, id,
 	).Scan(&updatedUser.UserID, &updatedUser.FirstName, &updatedUser.LastName, &updatedUser.Email)
 
 	if err != nil {
@@ -117,10 +121,10 @@ func (us *UserStore)DeleteUser(ctx context.Context, id int, email string) error 
 func (us *UserStore)GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
 	user := &models.User{}
 	err := us.db.QueryRowContext(ctx,
-		`SELECT user_id, firstname, lastname, email, user_location, user_type FROM mkt_users
+		`SELECT user_id, firstname, lastname, email, passwordhashed, user_location, user_type FROM mkt_users
 		WHERE email = $1`,
 		email,
-	).Scan(&user.UserID, &user.FirstName, &user.LastName, &user.Email, &user.UserLocation, &user.UserType)
+	).Scan(&user.UserID, &user.FirstName, &user.LastName, &user.Email, &user.PasswordHash ,&user.UserLocation, &user.UserType)
 
 	if err != nil {
 		return nil, err
@@ -132,10 +136,10 @@ func (us *UserStore)GetUserByEmail(ctx context.Context, email string) (*models.U
 func (us *UserStore) GetUserByUsername(ctx context.Context, username string) (*models.User, error) {
 	user := &models.User{}
 	err := us.db.QueryRowContext(ctx,
-		`SELECT user_id, firstname, lastname, email, user_location, user_type FROM mkt_users 
+		`SELECT user_id, firstname, lastname, email, passwordhashed, user_location, user_type FROM mkt_users 
 		WHERE username = $1`,
 		username,
-	).Scan(&user.UserID, &user.FirstName, &user.LastName, &user.Email, &user.UserLocation, &user.UserType)
+	).Scan(&user.UserID, &user.FirstName, &user.LastName, &user.Email, &user.PasswordHash, &user.UserLocation, &user.UserType)
 
 	if err != nil {
 		return nil, err
@@ -144,16 +148,13 @@ func (us *UserStore) GetUserByUsername(ctx context.Context, username string) (*m
 	return user, nil
 }
 
-func (us *UserStore)GetPassword(ctx context.Context, id int) (*models.User, error) {
+func (us *UserStore) GetPassword(ctx context.Context, id int) (*models.User, error) {
 	user := &models.User{}
-	err := us.db.QueryRowContext(ctx, `SELECT passwordhashed WHERE user_id = $1`, id).Scan(&user.PasswordHash)
+	err := us.db.QueryRowContext(ctx, `SELECT passwordhashed FROM mkt_users WHERE user_id = $1`, id).Scan(&user.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
 	
 	return user, nil
-}
 
-func (us *UserStore) ValidateUser(ctx context.Context, id int) (*models.User, error) {
-	return nil, nil
 }
