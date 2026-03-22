@@ -15,7 +15,7 @@ func CORSMiddleware() gin.HandlerFunc {
 		c.Header("Vary", "Origin")
 
 		if c.Request.Method == http.MethodOptions {
-			c.AbortWithStatus(http.StatusNoContent) // ✅ Abort, not just return
+			c.AbortWithStatus(http.StatusNoContent)
 			return
 		}
 		c.Next()

@@ -7,9 +7,10 @@ import (
 
 func registerRoutes(r *gin.Engine, s *ServerContext) {
 	userCtrl := &controllers.UserContext{
-        Users:    s.Users,
+        Users: s.Users,
         Products: s.Products,
-        Orders:   s.Orders,
+        Orders: s.Orders,
+		Authc: s.AuthContext,
     }
 	// v1 auth
 	auth := r.Group("/v1/auth" ) 

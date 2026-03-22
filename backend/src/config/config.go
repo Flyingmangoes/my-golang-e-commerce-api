@@ -20,6 +20,7 @@ type AppConfig struct {
 type ServerConfig struct {
 	Host string
 	Port string
+	JWTSecret string
 }
 
 type DBConfig struct {
@@ -44,6 +45,10 @@ func (a *Application) Validate() error {
 		return errors.New("SERV_PORT is required")
 	}
 
+	if a.ServConf.JWTSecret == "" {
+		return errors.New("SECRET is required")
+	}
+
     return nil
 }
 
@@ -55,6 +60,7 @@ func NewConfig() *Application {
 		ServConf: &ServerConfig{
 			Host: os.Getenv("SERV_HOST"),
 			Port: os.Getenv("SERV_PORT"),
+			JWTSecret: os.Getenv("JWT_SECRET"),
 		},
 		AppConf: &AppConfig{
 			CustomAliasLength: 6,

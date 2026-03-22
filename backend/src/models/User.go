@@ -3,7 +3,7 @@ package models
 import "time"
 
 type User struct {
-	UserID 			int 		`db:"user_id"`		 
+	UserID 			string 		`db:"user_id"`		 
 	FirstName 		string 		`db:"firstname"` 
 	LastName 		string		`db:"lastname"`
 	Username		string		`db:"username"`

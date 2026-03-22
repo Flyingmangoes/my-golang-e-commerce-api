@@ -6,6 +6,7 @@ import (
 	"backend/src/utils"
 	"backend/src/validators"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 
@@ -18,8 +19,8 @@ type UserContext struct {
     Users    services.UserStoreInterface
     Products services.ProductStoreInterface
     Orders   services.OrderStoreInterface
+	Authc 	 middlewares.AuthContext
 }
-
 
 type CreateUserRequest struct {
     FirstName    string `json:"firstname"    binding:"required"`
@@ -33,7 +34,7 @@ type CreateUserRequest struct {
 }
 
 type UpdateUserRequest struct {
-    UserID      	int     `json:"user_id"      binding:"required"`
+    UserID      	string    `json:"user_id"      binding:"required"`
 	Password 		string 	`json:"password"`
     NewFirstname 	*string `json:"newfirstname" binding:"omitempty"`
     NewLastname  	*string `json:"newlastname"  binding:"omitempty"`
@@ -44,13 +45,13 @@ type UpdateUserRequest struct {
 }
 
 type RemoveUserRequest struct {
-	UserID      	int     `json:"user_id"      binding:"required"`
+	UserID      	string     `json:"user_id"      binding:"required"`
 	Email 			string  `json:"email"        binding:"required,email"`
 	Password     	string  `json:"password"     binding:"required"`
 }
 
 type GetUserRequest struct {
-	UserID		*int 	`json:"user_id"  binding:"omitempty"`
+	UserID		*string 	`json:"user_id"  binding:"omitempty"`
 	Username 	*string	`json:"username" binding:"omitempty"`
 	Email		*string `json:"email"    binding:"omitempty,email"`
 	Password 	 string	`json:"password" binding:"required"`
@@ -77,6 +78,7 @@ func (uc *UserContext)Register() gin.HandlerFunc {
 			req.Email, string(hashedpass), req.UserType, 
 			req.UserLocation, req.UserAgreed,
 		)
+		
 		if err != nil {
 			slog.Error("[DEBUG]", "error", err)
 			var PgErr *pq.Error
@@ -93,7 +95,7 @@ func (uc *UserContext)Register() gin.HandlerFunc {
 	}
 }
 
-func (us *UserContext)Update() gin.HandlerFunc {
+func (uc *UserContext)Update() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req UpdateUserRequest
 		if err := c.ShouldBindBodyWithJSON(&req); err != nil {
@@ -116,7 +118,7 @@ func (us *UserContext)Update() gin.HandlerFunc {
 			newPassword = utils.Stroptr(string(hashedpass))
 		}
 
-		user, err := us.Users.UpdateUser(c.Request.Context(), 
+		user, err := uc.Users.UpdateUser(c.Request.Context(), 
 			req.UserID, req.NewFirstname, req.NewLastname,
 			newPassword, req.NewEmail, 
 			req.NewUsername, req.NewLocation,
@@ -128,7 +130,7 @@ func (us *UserContext)Update() gin.HandlerFunc {
 			return
 		}
 
-		compares, err := us.Users.GetPassword(c.Request.Context(), req.UserID)
+		compares, err := uc.Users.GetPassword(c.Request.Context(), &req.UserID, nil, nil)
 		if err != nil {
 			slog.Error("[DEBUG]", "error", err)
 			c.Error(middlewares.ErrInternal("Failed to compare data"))
@@ -144,7 +146,7 @@ func (us *UserContext)Update() gin.HandlerFunc {
 	}
 }
 
-func (us *UserContext)RemoveUser() gin.HandlerFunc{
+func (uc *UserContext)RemoveUser() gin.HandlerFunc{
 	return func(c *gin.Context) {
 		var req RemoveUserRequest
 		if err := c.ShouldBindBodyWithJSON(&req); err != nil {
@@ -153,9 +155,9 @@ func (us *UserContext)RemoveUser() gin.HandlerFunc{
 			return
 		}
 
-		userID := c.GetInt("user_id")
+		//userID := c.GetInt("user_id")
 
-		hashedpass, err := us.Users.GetPassword(c.Request.Context(), userID)
+		hashedpass, err := uc.Users.GetPassword(c.Request.Context(), &req.UserID, nil, nil)
 		if err != nil {
 			slog.Error("[DEBUG]", "error", err)
 			var PgErr *pq.Error
@@ -175,7 +177,7 @@ func (us *UserContext)RemoveUser() gin.HandlerFunc{
 			return
 		}
 
-		err = us.Users.DeleteUser(c.Request.Context(), userID, req.Email)
+		err = uc.Users.DeleteUser(c.Request.Context(), req.UserID, req.Email)
 		if err != nil {
 			slog.Error("[DEBUG]", "error", err)
 			c.Error(middlewares.ErrInternal("Failed to update user"))
@@ -184,7 +186,7 @@ func (us *UserContext)RemoveUser() gin.HandlerFunc{
 	}
 }
 
-func (us *UserContext)Login() gin.HandlerFunc{
+func (uc *UserContext)Login() gin.HandlerFunc{
 	return func(c *gin.Context) {
 		var req GetUserRequest
 		if err := c.ShouldBindBodyWithJSON(&req); err != nil {
@@ -198,17 +200,50 @@ func (us *UserContext)Login() gin.HandlerFunc{
             return
         }
 
-		user, err := us.Users.GetUserByEmail(c.Request.Context(), *req.Email)
+		user, err := uc.Users.GetUserByEmail(c.Request.Context(), *req.Email)
         if err != nil {
             c.Error(middlewares.ErrUnauthorized("Invalid credentials"))
             return
         }
 
-		if err := validators.ValidatePassword(user.PasswordHash, req.Password); err != nil {
+		compares, err := uc.Users.GetPassword(c.Request.Context(), nil, req.Email, nil)
+
+		if err := validators.ValidatePassword(compares.PasswordHash, req.Password); err != nil {
             c.Error(middlewares.ErrUnauthorized("Invalid credentials"))
             return
         }
 		
 		c.JSON(http.StatusOK, gin.H{"user": user})
+	}
+}
+
+func (uc *UserContext) ListUsers() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		filter := services.ListUsersFilter {
+			UserType: nil,
+		}
+
+		if raw := c.Query("cursor"); raw != "" {
+			cursor, err := utils.DecodeCursor(raw)
+			if err != nil {
+				slog.Error("[DEBUG]", "error", err)
+				c.Error(middlewares.ErrBadRequest("Invalid cursor"))
+				return
+			}
+			filter.Cursor = cursor
+		}
+
+		if l := c.Query("limit"); l != "" {
+			fmt.Sscan(l, &filter.Limit)
+		}
+
+		page, err := uc.Users.ListUsers(c.Request.Context(), filter,)
+		if err != nil {
+			slog.Error("[DEBUG]", "error", err)
+			c.Error(middlewares.ErrInternal("Failed to list user"))
+			return
+		}
+
+		c.JSON(http.StatusOK, page)
 	}
 }
